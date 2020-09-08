@@ -4,22 +4,149 @@ output:
   html_document:
     keep_md: true
 ---
+## Introduction
+It is now possible to collect a large amount of data about personal movement using activity monitoring devices such as a Fitbit, Nike Fuelband, or Jawbone Up. These type of devices are part of the “quantified self” movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. But these data remain under-utilized both because the raw data are hard to obtain and there is a lack of statistical methods and software for processing and interpreting the data.
+
+This assignment makes use of data from a personal activity monitoring device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day.
+
+The data for this assignment can be downloaded from the course web site:
+
+* Dataset: [Activity monitoring data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip) 
+
+__The variables included in this dataset are:__
+
+* steps: Number of steps taking in a 5-minute interval (missing values    are coded as 𝙽𝙰) </br>
+* date: The date on which the measurement was taken in YYYY-MM-DD format   </br>
+* interval: Identifier for the 5-minute interval in which measurement     was taken </br>
+* The dataset is stored in a comma-separated-value (CSV) file and there   are a total of 17,568 observations in this dataset. 
 
 
 ## Loading and preprocessing the data
+The data is read into R.
+
+```{r}
+
+library("data.table")
+initialdata <- data.table::fread(input = "activity.csv")
+```
 
 
 
 ## What is mean total number of steps taken per day?
 
+Any missing values in the data are ignored.
 
+```{r}
+
+data <- initialdata[!(is.na(initialdata$steps)),]
+```
+
+1. The total number of steps taken per day is calculated. 
+
+For grouping the data into steps taken each day and then calculating the total number of steps, the "aggregate" function is used.
+
+```{r}
+total_steps <- aggregate(steps~date, data, sum)
+head(total_steps, 10)
+```
+
+A histogram of the total number of steps taken each day is plotted.
+```{r}
+library(ggplot2)
+ggplot(total_steps, aes(x=steps))+
+  geom_histogram(fill = "blue", binwidth = 1000)+
+  labs(title = "Daily Steps", x="Steps" , y= "Frequency")
+```
+
+The mean and median of the total number of steps taken per day are recorded and calculated.
+```{r}
+library(dplyr)
+summary <- summarise(total_steps, mean_steps = mean(total_steps$steps),
+                     median_steps = median(total_steps$steps))
+print(summary)
+
+
+```
+The mean value is __10766.19__ and the median value is __10765__ .
 
 ## What is the average daily activity pattern?
+1. A time series plot(i.e.type = "1") is made of the 5-minute interval  (x-axis) and the average number of steps taken, averaged across all   days(y-axis). 
+```{r}
 
+steps_interval <- aggregate(steps ~ interval, data,mean )
+head(steps_interval)
 
+library(ggplot2)
+ggplot(steps_interval, aes(x = interval , y = steps)) + geom_line(color="blue", size=1) + labs(title = "Average Daily Steps", x = "Interval", y = "Avg. Steps per day")
+```
+
+2. The 5-minute interval containing the maximum number of steps on average across all the days in the dataset is found out.
+
+```{r}
+steps_interval[grep(max(steps_interval$steps), steps_interval$steps),]
+```
 
 ## Imputing missing values
+1. The total number of missing values in the dataset indicates the total number of rows with NAs. The total number of these missing values is calculated and reported.
+
+```{r} 
+sum(is.na(initialdata$steps))
+```
+2. There are 2304 missing values contained within the steps variable, and a stategy is devised for filling in all these missing values.This strategy involves filling in all the missing values with the median values of that day.
+
+3. Hence, a new dataset equivalent to the original dataset is created, but with the missing values filled in.
+```{r}
+
+newdata <- initialdata
+for(x in 1:17568){
+  if(is.na(newdata[x,1]) == T){
+    newdata[x,1] <- steps_interval[steps_interval$interval %in% newdata[x,3],2]
+  }
+}
+head(newdata)
+```
+
+4. A histrogram of the total number of steps taken each day is made.
+```{r}
+total_steps_new <- aggregate(steps~date, newdata, sum)
+library(ggplot2)
+ggplot(total_steps, aes(x=steps))+
+  geom_histogram(fill = "blue", binwidth = 1000)+
+  labs(title = "Daily Steps", x="Steps" , y= "Frequency")
+```
+
+The mean and median of the total number of steps taken each day are calculated.
+
+```{r}
+library(dplyr)
+summary_new <- summarise(total_steps_new, mean_steps = mean(total_steps_new$steps),
+                     median_steps = median(total_steps_new$steps))
+print(summary_new)
+```
+
+
 
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+A new factor variable with two levels - "weekday" and "weekend" are created, each indicating whether a given day is a weekday or a weekend.
+
+
+```{r}
+newdata <- data.table::fread(input= "activity.csv")
+newdata[, date := as.POSIXct(date, format = "%Y-%m-%d")]
+newdata[, `Day of Week`:= weekdays(x = date)]
+newdata[grepl(pattern = "Monday|Tuesday|Wednesday|Thursday|Friday", x = `Day of Week`), "weekday or weekend"] <- "weekday"
+newdata[grepl(pattern = "Saturday|Sunday", x = `Day of Week`), "weekday or weekend"] <- "weekend"
+newdata[, `weekday or weekend` := as.factor(`weekday or weekend`)]
+head(newdata, 10)
+```
+
+A panel plot contacontaining a time series plot (i.e. 𝚝𝚢𝚙𝚎 = "𝚕") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis), is made.
+
+```{r}
+library(ggplot2)
+newdata[is.na(steps), "steps"] <- newdata[, c(lapply(.SD, median, na.rm = TRUE)), .SDcols = c("steps")]
+Interval <- newdata[, c(lapply(.SD, mean, na.rm = TRUE)), .SDcols = c("steps"), by = .(interval, `weekday or weekend`)] 
+ggplot(Interval , aes(x = interval , y = steps, color=`weekday or weekend`)) + geom_line() + labs(title = "Average Daily Steps by Weektype", x = "Interval", y = "No. of Steps") + facet_wrap(~`weekday or weekend` , ncol = 1, nrow=2)
+```
